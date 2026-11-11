@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Path to Kerchunk reference files
-REF_DIR="/gdex/data/d651039/kerchunk"
+#REF_DIR="/gdex/data/d651039/kerchunk"
+REF_DIR="/glade/campaign/collections/gdex/data/d651039/kerchunk"
 
 # Path to catalog generator 
 SRC_DIR="/glade/u/home/bonnland/GitRepos/gdex-intake-esm/generator"
