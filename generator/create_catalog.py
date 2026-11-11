@@ -291,19 +291,6 @@ def file_parser(file_path, data_format='netcdf', zarr_format:int=None, ignore_va
     print(f'Gathering {file_path}')
     path_str = file_path
 
-    # set backend_kwarg for cftime decoding if option is set
-    if use_cftime:
-        time_coder = xarray.coders.CFDatetimeCoder(use_cftime=True)
-        backend_kwargs['decode_times'] = time_coder
-        try:
-            # test if cftime decoding works for this file
-            with xarray.open_dataset(file_path, engine=get_engine(file_path), backend_kwargs=backend_kwargs) as ds:
-                pass
-        except ValueError as e:
-            backend_kwargs['decode_times'] = False
-            print(f'Warning: cftime decoding failed for file {file_path} with error: {e}. Falling back to no time decoding.')
-    else:
-        backend_kwargs['decode_times'] = None
 
     # Handle reference case
     if data_format == 'reference':
@@ -336,6 +323,20 @@ def file_parser(file_path, data_format='netcdf', zarr_format:int=None, ignore_va
     else:
         print(f'Handling netcdf/grib format for file: {file_path}')
         engine = get_engine(file_path)
+
+    # set backend_kwarg for cftime decoding if option is set
+    if use_cftime:
+        time_coder = xarray.coders.CFDatetimeCoder(use_cftime=True)
+        backend_kwargs['decode_times'] = time_coder
+        try:
+            # test if cftime decoding works for this file
+            with xarray.open_dataset(file_path, engine=engine, backend_kwargs=backend_kwargs) as ds:
+                pass
+        except ValueError as e:
+            backend_kwargs['decode_times'] = False
+            print(f'Warning: cftime decoding failed for file {file_path} with error: {e}. Falling back to no time decoding.')
+    else:
+        backend_kwargs['decode_times'] = None
 
     # if empty reset to None for xarray compatibility
     if backend_kwargs == {}:
@@ -489,7 +490,7 @@ def make_remote_catalog(filename, catalog_data='reference', output_format='csv_a
 
     # define replacement strings and write new files
     if catalog_data == 'reference':
-        match_str = '/glade/campaign/collections/gdex/data/'
+        match_strs = ['/glade/campaign/collections/gdex/data/','/gdex/data/']
         https_str = 'https://data.gdex.ucar.edu/'
         # osdf_str = 'https://data-osdf.gdex.ucar.edu/'
         # osdf_str = 'osdf:///ncar/gdex/'
@@ -501,13 +502,29 @@ def make_remote_catalog(filename, catalog_data='reference', output_format='csv_a
         osdf_str = 'osdf:///ncar-gdex/'
         # osdf_str = 'https://osdf-director.osg-htc.org/ncar-gdex/'
     elif catalog_data == 'zarr-glade':
-        match_str = '/glade/campaign/collections/gdex/data/'
+        match_strs = ['/glade/campaign/collections/gdex/data/','/gdex/data/']
         https_str = 'https://data.gdex.ucar.edu/'
         osdf_str = 'osdf:///ncar/gdex/'
         # osdf_str = 'https://osdf-director.osg-htc.org/ncar/gdex/'
     else:
         raise ValueError(f'Unsupported catalog data type: {catalog_data}')
 
+    # test posix path pattern
+    if catalog_data in ('reference', 'zarr-glade'):
+        with open(filename, 'r', encoding='utf-8') as fh:
+            # skip header line, read the second line (first real data row)
+            fh.readline()
+            data_line = fh.readline()
+        path_value = data_line.split(',')[0].strip()
+        if path_value.startswith(match_strs[0]):
+            match_str = match_strs[0]
+        elif path_value.startswith(match_strs[1]):
+            match_str = match_strs[1]
+        else:
+            raise ValueError(
+                f'Path {path_value} in {filename} does not start with any of the '
+                f'expected prefixes: {match_strs}'
+            )
 
     if output_format.lower() == 'csv_and_json' :
         # modify csv file line by line
